@@ -1,0 +1,12 @@
+# Core build tools
+setuptools==58.2.0
+wheel==0.38.4
+Cython==0.29.36
+
+# Main dependencies
+numpy==1.24.4
+pandas==1.5.3
+scikit-learn==1.3.0
+scikit-surprise @ git+https://github.com/NicolasHug/Surprise.git@master
+streamlit==1.27.2
+requests==2.31.0

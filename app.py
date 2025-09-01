@@ -305,7 +305,7 @@ try:
             idx = indices.get(title.lower())
             if idx is None:
                 st.warning(f"Exact match for '{title}' not found. Showing popular titles.")
-                return anime_data.nlargest(top_n, 'rating')[['name', 'genre', 'type', 'episodes', 'rating', 'image_url']].assign(reason="Popular/Highly Rated (Fallback)")
+                return anime_data.nlargest(top_n, 'rating')[['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].assign(reason="Popular/Highly Rated (Fallback)")
             sim_scores = list(enumerate(cosine_sim[idx]))
             sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
             sim_scores = sim_scores[1:top_n+1]
@@ -313,7 +313,7 @@ try:
                 st.warning("No similar animes found.")
                 return pd.DataFrame()
             anime_indices = [i[0] for i in sim_scores]
-            recs = anime_data.iloc[anime_indices][['name', 'genre', 'type', 'episodes', 'rating', 'image_url']].copy()
+            recs = anime_data.iloc[anime_indices][['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].copy()
             recs['reason'] = f"Based on genre/theme similarity to '{title}'."
             return recs.reset_index(drop=True)
         except Exception as e:
@@ -400,7 +400,7 @@ try:
         try:
             if not user_ratings_dict:
                 st.warning("No user ratings provided for collaborative filtering.")
-                return anime_data.nlargest(top_n, 'rating')[['name', 'genre', 'type', 'episodes', 'rating', 'image_url']].assign(reason="Popular/Highly Rated (No Ratings)")
+                return anime_data.nlargest(top_n, 'rating')[['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].assign(reason="Popular/Highly Rated (No Ratings)")
             
             ratings_filtered = load_full_ratings()
             
@@ -424,7 +424,7 @@ try:
                     p['est'] -= (global_rating - 5.0) * 0.2
             predictions.sort(key=lambda x: x['est'], reverse=True)
             top_anime_ids = [p['iid'] for p in predictions[:top_n]]
-            recs = anime_data[anime_data['anime_id'].isin(top_anime_ids)][['name', 'genre', 'type', 'episodes', 'rating', 'image_url']].copy()
+            recs = anime_data[anime_data['anime_id'].isin(top_anime_ids)][['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].copy()
             recs['reason'] = "Based on your ratings and similar users."
             return recs.reset_index(drop=True)
         except Exception as e:
@@ -466,7 +466,7 @@ try:
             )
             merged_recs = merged_recs.drop_duplicates(subset=['name_content', 'name_collab'])
 
-            for col in ['name', 'genre', 'type', 'episodes', 'rating', 'image_url']:
+            for col in ['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']:
                 merged_recs[f'{col}_content'] = merged_recs[f'{col}_content'].fillna(merged_recs[f'{col}_collab'])
                 merged_recs[f'{col}_collab'] = merged_recs[f'{col}_collab'].fillna(merged_recs[f'{col}_content'])
 
@@ -480,8 +480,8 @@ try:
 
             merged_recs = merged_recs.sort_values(by='hybrid_score', ascending=False).head(top_n)
 
-            output_recs = merged_recs[['name_content', 'genre_content', 'type_content', 'episodes_content', 'rating_content', 'image_url_content']].copy()
-            output_recs.columns = ['name', 'genre', 'type', 'episodes', 'rating', 'image_url']
+            output_recs = merged_recs[['anime_id_content', 'name_content', 'genre_content', 'type_content', 'episodes_content', 'rating_content', 'image_url_content']].copy()
+            output_recs.columns = ['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']
             output_recs['reason'] = "Blending genre similarity with what users like you enjoyed."
 
             return output_recs.reset_index(drop=True)
@@ -515,13 +515,14 @@ try:
         except Exception as e:
             return "https://placehold.co/300x400/2d2d44/ffffff?text=Anime+Cover"
 
-    def get_mal_url(anime_name):
+    def get_mal_url(anime_id, anime_name):
         """
         Generate MyAnimeList search URL for anime
         - Creates clickable links to MAL for more information
         """
+        url_friendly_name = anime_name.replace(' ','_')
         encoded_name = urllib.parse.quote(anime_name)
-        return f"https://myanimelist.net/anime.php?q={encoded_name}&cat=anime"
+        return f"https://myanimelist.net/anime/{anime_id}/{encoded_name}"
 
 
     # =============================================================================
@@ -778,15 +779,19 @@ try:
             else:
                 st.info(f"✅ You've already rated '{selected_anime}'.")
 
-    if st.session_state.rated_anime:
-        st.markdown("---")
-        st.markdown("<h3>Your Rated Anime:</h3>", unsafe_allow_html=True)
-        rated_entries = []
-        for name in st.session_state.rated_anime:
-             mal_url = get_mal_url(name)
-             rated_entries.append(f"<span class='rated-anime-entry'><a href='{mal_url}' target='_blank' class='anime-title-link'>{name}</a></span>")
-        rated_html = "".join(rated_entries)
-        st.markdown(f"<div class='rated-anime-list'>{rated_html}</div>", unsafe_allow_html=True)
+        if st.session_state.rated_anime:
+            st.markdown("---")
+            st.markdown("<h3>Your Rated Anime:</h3>", unsafe_allow_html=True)
+            rated_entries = []
+            for name in st.session_state.rated_anime:
+                # Find the anime's row in the main dataframe to get its ID
+                anime_info = anime_data[anime_data['name'] == name].iloc[0]
+                anime_id = anime_info['anime_id']
+                # Now, call the upgraded function with both ID and name
+                mal_url = get_mal_url(anime_id, name)
+                rated_entries.append(f"<span class='rated-anime-entry'><a href='{mal_url}' target='_blank' class='anime-title-link'>{name}</a></span>")
+            rated_html = "".join(rated_entries)
+            st.markdown(f"<div class='rated-anime-list'>{rated_html}</div>", unsafe_allow_html=True)
         st.markdown(f"<p style='color:#a0a0c0; font-size:14px;'>Total Ratings: {len(st.session_state.rated_anime)}</p>", unsafe_allow_html=True)
 
 
@@ -832,7 +837,7 @@ try:
             # Presentation Note: Custom HTML/CSS creates a grid of recommendation cards with images and expanders for details; enhances visual presentation.
             if recs.empty:
                 st.info("No specific recommendations found for this method. Showing popular titles as examples.")
-                fallback_recs = anime_data.nlargest(5, 'rating')[['name', 'genre', 'type', 'episodes', 'rating', 'image_url']]
+                fallback_recs = anime_data.nlargest(5, 'rating')[['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']]
                 fallback_recs['reason'] = "Popular/Highly Rated (Fallback)"
                 recs = fallback_recs
             
@@ -853,7 +858,7 @@ try:
                                 <img src='{image_url}' style='width: 100%; max-width: 220px; height: 300px; object-fit: cover; border-radius: 12px; margin-bottom: 15px; box-shadow: 0 6px 12px rgba(0,0,0,0.4);'>
                             </div>
                             <div style='text-align: center; padding: 0 10px; height: 80px; display: flex; align-items: center; justify-content: center;'>
-                                <a href='{get_mal_url(row['name'])}' target='_blank' class='anime-title-link'>{row['name']}</a>
+                                <a href='{get_mal_url(row['anime_id'], row['name'])}' target='_blank' class='anime-title-link'>{row['name']}</a>
                             </div>
                         </div>
                         """, unsafe_allow_html=True)

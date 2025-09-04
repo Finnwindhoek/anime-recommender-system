@@ -78,7 +78,6 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
         background: linear-gradient(to right, #833ab4, #ff79c6);
-        color: #39FF14 !important; /* A vibrant lime green */
     }
     .anime-rec-item {
         background: linear-gradient(135deg, #2d2d44 0%, #1e1e2d 100%);

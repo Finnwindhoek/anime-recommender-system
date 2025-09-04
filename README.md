@@ -160,7 +160,7 @@ conda install -c conda-forge scikit-learn scikit-surprise -y
 ```
 
 ```
-pip install streamlit pandas numpy requests
+pip install -r requirements.txt
 ```
 After package installations, run ```streamlit run app.py``` to run the code and start the model.
 

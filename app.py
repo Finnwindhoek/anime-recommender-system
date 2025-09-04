@@ -78,6 +78,7 @@ st.markdown("""
         transform: translateY(-2px);
         box-shadow: 0 6px 8px rgba(0, 0, 0, 0.2);
         background: linear-gradient(to right, #833ab4, #ff79c6);
+        color: #39FF14 !important; /* A vibrant lime green */
     }
     .anime-rec-item {
         background: linear-gradient(135deg, #2d2d44 0%, #1e1e2d 100%);
@@ -764,7 +765,7 @@ try:
             if not is_rated:
                 rating_label = st.radio("How did you like it?", ["Amazing ⭐⭐⭐⭐⭐", "Good ⭐⭐⭐⭐", "Meh ⭐⭐", "Bad ⭐"], key="rating_radio", index=None)
                 rating_map = {"Amazing ⭐⭐⭐⭐⭐": 10, "Good ⭐⭐⭐⭐": 7, "Meh ⭐⭐": 4, "Bad ⭐": 1}
-                if st.button("Submit Rating", key="submit_rating", use_container_width=True):
+                if st.button("Submit Rating", key="submit_rating", use_container_width=True, type="primary"):
                     if rating_label:
                         if anime_row['anime_id'] in st.session_state.user_ratings:
                             st.warning("You already rated this anime!")

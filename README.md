@@ -128,17 +128,18 @@ Find the downloaded ```anime-recommender-system-main.zip``` file in your Downloa
 
 ### 💻 Running the Application (For Both Methods)
 - Click WinKey and search for "*cmd* " and enter ```python --version```
-Note: Install python - https://www.python.org/downloads/windows/
+
+Note: If python not installed, install python (version: 3.9 - 3.11)- https://www.python.org/downloads/windows/
 
 <div style="margin-top:20px;">
 
-- Navigate to https://www.anaconda.com/download/success and install **miniconda installer** 
+- Navigate to https://www.anaconda.com/download/success and install **miniconda installer** (Install with default options)
 </div>
 
 </br>
 
 #### Step 2: After installation Completed.
-- Open anaconda prompt.
+- Open miniconda prompt.
 - Create enviroment with Python 3.10.11
 ```
 conda create -n ai_env python=3.10.11

@@ -27,7 +27,7 @@ from sklearn.metrics import mean_squared_error
 # Presentation Note: These parameters control app behavior. REQUIRED_RATINGS ensures enough data for meaningful recommendations. DEMO_MODE samples data for faster loading during presentations.
 REQUIRED_RATINGS = 5  # Minimum ratings needed to unlock recommendations
 SAMPLE_FRACTION = 1.0  # Use full dataset
-DEMO_MODE = True  # Enable demo mode for faster presentations
+DEMO_MODE = False  # Enable demo mode for faster presentations
 DEMO_SAMPLE_SIZE = 100000  # Use 100k ratings in demo mode for quick responses
 
 # =============================================================================

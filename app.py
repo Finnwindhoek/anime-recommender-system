@@ -15,7 +15,6 @@ import traceback
 import numpy as np
 import urllib.parse
 import requests
-import re
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import linear_kernel
 from surprise import SVD, Dataset, Reader
@@ -288,23 +287,10 @@ try:
         cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
         return cosine_sim
 
-    def filter_by_genres_df(df, genres):
-        """
-        Filter a DataFrame of anime rows by a list of selected genres.
-        Matches any of the provided genres as substrings in the comma-separated genre field.
-        """
-        if not genres:
-            return df
-        try:
-            pattern = "|".join(re.escape(g) for g in genres)
-            return df[df['genre'].str.contains(pattern, case=False, na=False)]
-        except Exception:
-            return df
-
     # =============================================================================
     # CONTENT-BASED RECOMMENDATION SYSTEM
     # =============================================================================
-    def get_content_recs(input_data, anime_data, cosine_sim, top_n=10, genre_filters=None):
+    def get_content_recs(input_data, anime_data, cosine_sim, top_n=10):
         """
         Content-Based Filtering Algorithm
         - Finds anime similar to the input anime based on genres and features
@@ -319,8 +305,7 @@ try:
             idx = indices.get(title.lower())
             if idx is None:
                 st.warning(f"Exact match for '{title}' not found. Showing popular titles.")
-                fallback = filter_by_genres_df(anime_data, genre_filters)
-                return fallback.nlargest(top_n, 'rating')[['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].assign(reason="Popular/Highly Rated (Fallback)")
+                return anime_data.nlargest(top_n, 'rating')[['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].assign(reason="Popular/Highly Rated (Fallback)")
             sim_scores = list(enumerate(cosine_sim[idx]))
             sim_scores = sorted(sim_scores, key=lambda x: x[1], reverse=True)
             sim_scores = sim_scores[1:top_n+1]
@@ -330,12 +315,6 @@ try:
             anime_indices = [i[0] for i in sim_scores]
             recs = anime_data.iloc[anime_indices][['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].copy()
             recs['reason'] = f"Based on genre/theme similarity to '{title}'."
-            # Apply genre filter if provided
-            recs = filter_by_genres_df(recs, genre_filters).reset_index(drop=True)
-            if recs.empty:
-                fallback = filter_by_genres_df(anime_data, genre_filters)
-                recs = fallback.nlargest(top_n, 'rating')[['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].copy()
-                recs['reason'] = "Popular/Highly Rated (Filtered by genre)"
             return recs.reset_index(drop=True)
         except Exception as e:
             st.error(f"Error in content-based recommendations: {e}")
@@ -409,7 +388,7 @@ try:
     # =============================================================================
     # COLLABORATIVE FILTERING RECOMMENDATION SYSTEM
     # =============================================================================
-    def get_collab_recs(user_ratings_dict, anime_data, top_n=10, genre_filters=None):
+    def get_collab_recs(user_ratings_dict, anime_data, top_n=10):
         """
         Collaborative Filtering Algorithm using SVD
         - Finds users with similar rating patterns
@@ -421,8 +400,7 @@ try:
         try:
             if not user_ratings_dict:
                 st.warning("No user ratings provided for collaborative filtering.")
-                fallback = filter_by_genres_df(anime_data, genre_filters)
-                return fallback.nlargest(top_n, 'rating')[['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].assign(reason="Popular/Highly Rated (No Ratings)")
+                return anime_data.nlargest(top_n, 'rating')[['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].assign(reason="Popular/Highly Rated (No Ratings)")
             
             ratings_filtered = load_full_ratings()
             
@@ -448,12 +426,6 @@ try:
             top_anime_ids = [p['iid'] for p in predictions[:top_n]]
             recs = anime_data[anime_data['anime_id'].isin(top_anime_ids)][['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].copy()
             recs['reason'] = "Based on your ratings and similar users."
-            # Apply genre filter if provided
-            recs = filter_by_genres_df(recs, genre_filters).reset_index(drop=True)
-            if recs.empty:
-                fallback = filter_by_genres_df(anime_data, genre_filters)
-                recs = fallback.nlargest(top_n, 'rating')[['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].copy()
-                recs['reason'] = "Popular/Highly Rated (Filtered by genre)"
             return recs.reset_index(drop=True)
         except Exception as e:
             st.error(f"Error in collaborative filtering recommendations: {e}")
@@ -462,7 +434,7 @@ try:
     # =============================================================================
     # HYBRID RECOMMENDATION SYSTEM
     # =============================================================================
-    def get_hybrid_recs(input_data, user_ratings_dict, anime_data, cosine_sim, top_n=10, genre_filters=None):
+    def get_hybrid_recs(input_data, user_ratings_dict, anime_data, cosine_sim, top_n=10):
         """
         Hybrid Recommendation Algorithm
         - Combines content-based and collaborative filtering approaches
@@ -472,8 +444,8 @@ try:
         """
         # Presentation Note: Hybrid merges content and collab by normalizing scores and computing a hybrid score; this balances genre similarity with user preferences for better accuracy.
         try:
-            content_recs = get_content_recs(input_data, anime_data, cosine_sim, top_n=top_n*2, genre_filters=genre_filters)
-            collab_recs = get_collab_recs(user_ratings_dict, anime_data, top_n=top_n*2, genre_filters=genre_filters)
+            content_recs = get_content_recs(input_data, anime_data, cosine_sim, top_n=top_n*2)
+            collab_recs = get_collab_recs(user_ratings_dict, anime_data, top_n=top_n*2)
 
             if content_recs.empty and collab_recs.empty:
                 st.warning("No recommendations found for hybrid method.")
@@ -512,11 +484,6 @@ try:
             output_recs.columns = ['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']
             output_recs['reason'] = "Blending genre similarity with what users like you enjoyed."
 
-            output_recs = filter_by_genres_df(output_recs, genre_filters).reset_index(drop=True)
-            if output_recs.empty:
-                fallback = filter_by_genres_df(anime_data, genre_filters)
-                output_recs = fallback.nlargest(top_n, 'rating')[['anime_id', 'name', 'genre', 'type', 'episodes', 'rating', 'image_url']].copy()
-                output_recs['reason'] = "Popular/Highly Rated (Filtered by genre)"
             return output_recs.reset_index(drop=True)
 
         except Exception as e:
@@ -736,24 +703,6 @@ try:
     with st.spinner("Loading the anime database and models... 🎌"):
         anime_data = load_anime_data()
         cosine_sim = build_similarity_matrix(anime_data)
-    # Genre filter UI
-    try:
-        all_genres = set()
-        for genres_str in anime_data['genre'].fillna(''):
-            for g in str(genres_str).split(','):
-                g_clean = g.strip()
-                if g_clean and g_clean.lower() != 'unknown':
-                    all_genres.add(g_clean)
-        sorted_genres = sorted(all_genres)
-    except Exception:
-        sorted_genres = []
-
-    selected_genres = st.multiselect(
-        "Filter by genre (optional):",
-        options=sorted_genres,
-        default=[],
-        help="Apply one or more genres to narrow recommendations"
-    )
 
     # Initialize session state for user data persistence
     # Presentation Note: Session state persists user ratings across reruns, simulating a logged-in user experience.
@@ -928,19 +877,19 @@ try:
         with tab1:
             st.markdown(f"#### Recommends anime similar to '{input_for_recs}'.")
             with st.spinner("🔍 Searching by genre/theme..."):
-                recs = get_content_recs(input_for_recs, anime_data, cosine_sim, top_n, genre_filters=selected_genres)
+                recs = get_content_recs(input_for_recs, anime_data, cosine_sim, top_n)
             display_list(recs)
 
         with tab2:
             st.markdown("#### Recommends based on your ratings and similar users.")
             with st.spinner("🔍 Analyzing your ratings and user patterns..."):
-                recs = get_collab_recs(st.session_state.user_ratings, anime_data, top_n, genre_filters=selected_genres)
+                recs = get_collab_recs(st.session_state.user_ratings, anime_data, top_n)
             display_list(recs)
 
         with tab3:
             st.markdown(f"#### Combines similarity to '{input_for_recs}' and user patterns.")
             with st.spinner("🔍 Blending genre similarity and user ratings..."):
-                recs = get_hybrid_recs(input_for_recs, st.session_state.user_ratings, anime_data, cosine_sim, top_n, genre_filters=selected_genres)
+                recs = get_hybrid_recs(input_for_recs, st.session_state.user_ratings, anime_data, cosine_sim, top_n)
             display_list(recs)
 
         with tab4:

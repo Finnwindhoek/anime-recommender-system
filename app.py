@@ -15,17 +15,11 @@ import traceback
 import numpy as np
 import urllib.parse
 import requests
-from sklearn.feature_extraction.text import TfidfVectorizer, CountVectorizer
-from sklearn.metrics.pairwise import linear_kernel, cosine_similarity
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import linear_kernel
 from surprise import SVD, Dataset, Reader
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
-import gensim
-from gensim.models import Word2Vec
-import nltk
-from nltk.corpus import stopwords
-from nltk.tokenize import word_tokenize
-import re
 
 # =============================================================================
 # CONFIGURATION PARAMETERS
@@ -35,12 +29,6 @@ REQUIRED_RATINGS = 5  # Minimum ratings needed to unlock recommendations
 SAMPLE_FRACTION = 1.0  # Use full dataset
 DEMO_MODE = True  # Enable demo mode for faster presentations
 DEMO_SAMPLE_SIZE = 100000  # Use 100k ratings in demo mode for quick responses
-
-# Text processing parameters
-TEXT_PROCESSING_METHOD = "tfidf"  # Options: "tfidf", "bag_of_words", "word2vec"
-WORD2VEC_DIMENSIONS = 100
-WORD2VEC_WINDOW = 5
-WORD2VEC_MIN_COUNT = 2
 
 # =============================================================================
 # STREAMLIT PAGE CONFIGURATION
@@ -259,21 +247,6 @@ st.markdown("""
 
 try:
     # =============================================================================
-    # NLTK DATA DOWNLOAD
-    # =============================================================================
-    def download_nltk_data():
-        """Download required NLTK data if not already present"""
-        try:
-            import nltk
-            nltk.download('punkt', quiet=True)
-            nltk.download('stopwords', quiet=True)
-        except Exception as e:
-            st.warning(f"Could not download NLTK data: {e}. Some text processing features may not work optimally.")
-
-    # Download NLTK data
-    download_nltk_data()
-
-    # =============================================================================
     # DATA LOADING AND PREPROCESSING FUNCTIONS
     # =============================================================================
     # Presentation Note: Caching with @st.cache_data ensures data is loaded only once, speeding up the app for repeated runs during demos.
@@ -297,113 +270,22 @@ try:
         anime['image_url'] = "https://placehold.co/300x400/2d2d44/ffffff?text=Anime+Cover"
         return anime
 
-    # =============================================================================
-    # TEXT PROCESSING FUNCTIONS
-    # =============================================================================
-    def preprocess_text(text):
-        """
-        Preprocess text for NLP tasks
-        - Converts to lowercase
-        - Removes special characters
-        - Tokenizes words
-        - Removes stopwords
-        """
-        if pd.isna(text):
-            return ""
-        
-        # Convert to lowercase
-        text = str(text).lower()
-        
-        # Remove special characters and digits
-        text = re.sub(r'[^a-zA-Z\s]', '', text)
-        
-        # Tokenize
-        try:
-            tokens = word_tokenize(text)
-        except:
-            # Fallback if NLTK data is not available
-            tokens = text.split()
-        
-        # Remove stopwords
-        try:
-            stop_words = set(stopwords.words('english'))
-            tokens = [token for token in tokens if token not in stop_words and len(token) > 2]
-        except:
-            # Fallback if stopwords are not available
-            tokens = [token for token in tokens if len(token) > 2]
-        
-        return tokens
-
+    # Presentation Note: @st.cache_resource caches the heavy computation of the similarity matrix, which is resource-intensive.
     @st.cache_resource
-    def build_bag_of_words_similarity(anime_data):
+    def build_similarity_matrix(anime_data):
         """
-        Build similarity matrix using Bag of Words approach
-        - Uses CountVectorizer to create word frequency vectors
-        - Calculates cosine similarity between anime based on genre/type text
+        Build content-based similarity matrix using TF-IDF and Cosine Similarity
+        - Combines genre and type information into feature vectors
+        - Uses TF-IDF to weight important terms
+        - Calculates cosine similarity between all anime pairs
+        - This enables content-based recommendations
         """
+        # Presentation Note: TF-IDF vectorizes text features (genres + type) to handle sparse data effectively; cosine similarity measures anime similarity based on these vectors.
         anime_data['features'] = anime_data['genre'] + ' ' + anime_data['type'].fillna('')
-        anime_data['processed_features'] = anime_data['features'].apply(lambda x: ' '.join(preprocess_text(x)))
-        count_vectorizer = CountVectorizer(max_features=5000, ngram_range=(1, 2))
-        count_matrix = count_vectorizer.fit_transform(anime_data['processed_features'])
-        cosine_sim = cosine_similarity(count_matrix, count_matrix)
-        
+        tfidf = TfidfVectorizer(stop_words='english', max_features=5000)
+        tfidf_matrix = tfidf.fit_transform(anime_data['features'])
+        cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
         return cosine_sim
-
-    @st.cache_resource
-    def build_word2vec_similarity(anime_data):
-        """
-        Build similarity matrix using Word2Vec embeddings
-        - Trains Word2Vec model on anime genre/type text
-        - Creates document embeddings by averaging word vectors
-        - Calculates cosine similarity between document embeddings
-        """
-        anime_data['features'] = anime_data['genre'] + ' ' + anime_data['type'].fillna('')
-        anime_data['processed_features'] = anime_data['features'].apply(preprocess_text)
-        
-        sentence = anime_data['processed_features'].tolist()
-        model = Word2Vec(
-            sentence=sentence,
-            vector_size=WORD2VEC_DIMENSIONS,
-            window=WORD2VEC_WINDOW,
-            min_count=WORD2VEC_MIN_COUNT,
-            workers=4,
-            sg=0
-        )
-        doc_embeddings = []
-        for sentence in sentence:
-            if sentence:
-                word_vectors = [model.wv[word] for word in sentence if word in model.wv]
-                if word_vectors:
-                    doc_embedding = np.mean(word_vectors, axis=0)
-                else:
-                    doc_embedding = np.zeros(WORD2VEC_DIMENSIONS)
-            else:
-                doc_embedding = np.zeros(WORD2VEC_DIMENSIONS)
-            doc_embeddings.append(doc_embedding)
-        
-        doc_embeddings = np.array(doc_embeddings)
-        cosine_sim = cosine_similarity(doc_embeddings, doc_embeddings)
-        
-        return cosine_sim, model
-
-    @st.cache_resource
-    def build_similarity_matrix(anime_data, method="tfidf"):
-        """
-        Build content-based similarity matrix using different text processing methods
-        - TF-IDF: Traditional term frequency-inverse document frequency
-        - Bag of Words: Simple word frequency counting
-        - Word2Vec: Neural word embeddings for semantic similarity
-        """
-        if method == "bag_of_words":
-            return build_bag_of_words_similarity(anime_data)
-        elif method == "word2vec":
-            return build_word2vec_similarity(anime_data)
-        else:
-            anime_data['features'] = anime_data['genre'] + ' ' + anime_data['type'].fillna('')
-            tfidf = TfidfVectorizer(stop_words='english', max_features=5000)
-            tfidf_matrix = tfidf.fit_transform(anime_data['features'])
-            cosine_sim = linear_kernel(tfidf_matrix, tfidf_matrix)
-            return cosine_sim
 
     # =============================================================================
     # CONTENT-BASED RECOMMENDATION SYSTEM
@@ -820,47 +702,7 @@ try:
     # Presentation Note: Spinner provides feedback during loading; caching ensures quick reloads.
     with st.spinner("Loading the anime database and models... 🎌"):
         anime_data = load_anime_data()
-        cosine_sim = build_similarity_matrix(anime_data, TEXT_PROCESSING_METHOD)
-
-    # Text Processing Method Selection
-    st.markdown("### 🔧 Text Processing Method")
-    text_method = st.selectbox(
-        "Choose how to process anime genres and types for similarity:",
-        options=["tfidf", "bag_of_words", "word2vec"],
-        index=0,
-        format_func=lambda x: {
-            "tfidf": "TF-IDF (Term Frequency-Inverse Document Frequency)",
-            "bag_of_words": "Bag of Words (Word Frequency Counting)",
-            "word2vec": "Word2Vec (Neural Word Embeddings)"
-        }[x],
-        help="Different methods for analyzing text similarity between anime genres and types."
-    )
-    
-    # Information about text processing methods
-    with st.expander("ℹ️ Learn about Text Processing Methods", expanded=False):
-        st.markdown("""
-        **TF-IDF (Term Frequency-Inverse Document Frequency):**
-        - Weights words by their frequency in a document vs. their rarity across all documents
-        - Good for finding anime with similar genre combinations
-        - Fast and reliable for most use cases
-        
-        **Bag of Words:**
-        - Simply counts word frequencies without weighting
-        - Good for finding anime with exact genre matches
-        - Simpler approach, may miss semantic relationships
-        
-        **Word2Vec (Neural Word Embeddings):**
-        - Uses neural networks to learn semantic relationships between words
-        - Can understand that "action" and "adventure" are related concepts
-        - More sophisticated but takes longer to compute
-        - Better for finding conceptually similar anime
-        """)
-    
-    # Update similarity matrix if method changed
-    if text_method != TEXT_PROCESSING_METHOD:
-        st.info(f"🔄 Switching to {text_method.upper()} method. This may take a moment to rebuild the similarity matrix...")
-        with st.spinner(f"Building {text_method.upper()} similarity matrix..."):
-            cosine_sim = build_similarity_matrix(anime_data, text_method)
+        cosine_sim = build_similarity_matrix(anime_data)
 
     # Initialize session state for user data persistence
     # Presentation Note: Session state persists user ratings across reruns, simulating a logged-in user experience.

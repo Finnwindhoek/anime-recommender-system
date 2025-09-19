@@ -343,8 +343,6 @@ try:
         """
         anime_data['features'] = anime_data['genre'] + ' ' + anime_data['type'].fillna('')
         anime_data['processed_features'] = anime_data['features'].apply(lambda x: ' '.join(preprocess_text(x)))
-        
-        # Use CountVectorizer for bag of words
         count_vectorizer = CountVectorizer(max_features=5000, ngram_range=(1, 2))
         count_matrix = count_vectorizer.fit_transform(anime_data['processed_features'])
         cosine_sim = cosine_similarity(count_matrix, count_matrix)
